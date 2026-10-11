@@ -116,3 +116,19 @@ def test_set_galvo_position_replaces_timed_task_with_on_demand_task(
         tasks[2].written[0], np.array([0.25, -0.5])
     )
     assert tasks[2].written[1] is True
+
+
+def test_single_collection_point_uses_voltage_hold_without_padding(monkeypatch):
+    tasks = _fake_tasks(monkeypatch)
+    controller = daq.DaqController.instance()
+    controller.prepare_for_collection(np.zeros((2, 2)))
+    timed = controller.galvo
+    for batch in (False, True):
+        controller.prepare_for_collection(np.array([[0.25], [-0.5]]), batch=batch, exposure=1)
+        assert controller.galvo.timing.config is None
+        assert controller.galvo.triggers.start_trigger.source is None
+        np.testing.assert_array_equal(controller.galvo.written[0], [0.25, -0.5])
+        assert controller.galvo.written[1] is True
+    assert timed.closed
+    controller.prepare_for_collection(np.zeros((2, 3)))
+    assert controller.galvo.timing.config[1]["samps_per_chan"] == 3

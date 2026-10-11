@@ -183,6 +183,14 @@ class DaqController:
             In volts.
         """
         points = np.ascontiguousarray(points)
+        if points.ndim != 2 or points.shape[0] != 2 or points.shape[1] < 1:
+            raise ValueError("Collection points must have shape (2, N), N >= 1")
+        if points.shape[1] == 1:
+            # A finite clocked task requires multiple samples. Hold this one
+            # voltage pair on demand instead; the detector still captures
+            # exactly the requested number of frames, without padding spectra.
+            self.set_galvo_position(points[:, 0])
+            return
         self._stop_galvo_for_reconfiguration()
         # xy_grid, volts = make_grid(N)
         if not batch:
