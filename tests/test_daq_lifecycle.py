@@ -22,6 +22,9 @@ class FakeStartTrigger:
     def cfg_dig_edge_start_trig(self, source):
         self.source = source
 
+    def disable_start_trig(self):
+        self.source = None
+
 
 class FakeTiming:
     def __init__(self):
@@ -132,3 +135,18 @@ def test_single_collection_point_uses_voltage_hold_without_padding(monkeypatch):
     assert timed.closed
     controller.prepare_for_collection(np.zeros((2, 3)))
     assert controller.galvo.timing.config[1]["samps_per_chan"] == 3
+
+
+def test_switch_between_batch_and_camera_clock(monkeypatch):
+    _fake_tasks(monkeypatch)
+    controller = daq.DaqController.instance()
+    for _ in range(2):
+        controller.prepare_for_collection(np.zeros((2, 25)), batch=True, exposure=.1)
+        args, kwargs = controller.galvo.timing.config
+        assert args == (250.0,)
+        assert kwargs["source"] == ""
+        assert kwargs["samps_per_chan"] == 25
+        assert controller.galvo.triggers.start_trigger.source == "/Dev1/PFI0"
+        controller.prepare_for_collection(np.zeros((2, 3)))
+        assert controller.galvo.timing.config[1]["source"] == "/Dev1/PFI0"
+        assert controller.galvo.triggers.start_trigger.source is None

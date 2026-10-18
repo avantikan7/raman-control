@@ -311,12 +311,27 @@ class SpectraCollector:
         return self.collect_spectra_volts(volts, exposure)
 
     def collect_spectra_pts_batch(self, volts, exposure=20):
-        """Compatibility fallback for callers requesting batched collection.
-
-        LightField performs the multi-frame capture synchronously, so the same
-        acquisition path is used for both regular and batch requests.
-        """
-        return self.collect_spectra_volts(volts, exposure)
+        """Integrate all galvo points into one frame over exposure milliseconds."""
+        points = np.asarray(volts, dtype=float)
+        if points.ndim != 2 or points.shape[1] != 2 or not len(points):
+            raise ValueError("Batch voltages must have shape (N, 2), N >= 1")
+        if not np.isfinite(points).all() or np.any(np.abs(points) > self.MAX_VOLTS):
+            raise ValueError(f"Batch voltages must be finite and within +/-{self.MAX_VOLTS} V")
+        if not np.isfinite(exposure) or exposure <= 0:
+            raise ValueError("Batch exposure must be positive and finite")
+        self._experiment.Stop()
+        self.set_rm_exposure(exposure)
+        self._set_full_vertical_binning()
+        try:
+            self._daq_controller.prepare_for_collection(
+                np.ascontiguousarray(points.T), batch=True, exposure=exposure / 1000)
+            dataset = self._experiment.Capture(1)
+        finally:
+            self._daq_controller.galvo.stop()
+        spectra = self._convert_capture(dataset)
+        if len(spectra) != 1:
+            raise RuntimeError("Integrated batch capture must return exactly one spectrum")
+        return spectra
 
     def capture_rm_grid(
         self,

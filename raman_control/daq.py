@@ -185,6 +185,10 @@ class DaqController:
         points = np.ascontiguousarray(points)
         if points.ndim != 2 or points.shape[0] != 2 or points.shape[1] < 1:
             raise ValueError("Collection points must have shape (2, N), N >= 1")
+        if not np.isfinite(points).all():
+            raise ValueError("Collection points must be finite")
+        if batch and (exposure is None or not np.isfinite(exposure) or exposure <= 0):
+            raise ValueError("Batch exposure must be positive and finite (seconds)")
         if points.shape[1] == 1:
             # A finite clocked task requires multiple samples. Hold this one
             # voltage pair on demand instead; the detector still captures
@@ -194,6 +198,9 @@ class DaqController:
         self._stop_galvo_for_reconfiguration()
         # xy_grid, volts = make_grid(N)
         if not batch:
+            # A previous batch uses a start trigger and an internal clock.
+            # Ordinary collection advances on the camera clock without a start trigger.
+            self._galvo.triggers.start_trigger.disable_start_trig()
             SAMPLERATE = 100000
             self._galvo.timing.cfg_samp_clk_timing(
                 SAMPLERATE,
@@ -207,6 +214,7 @@ class DaqController:
             sample_rate = points.shape[1] / exposure
             self._galvo.timing.cfg_samp_clk_timing(
                 sample_rate,
+                source="",
                 sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                 samps_per_chan=points.shape[1],
             )
